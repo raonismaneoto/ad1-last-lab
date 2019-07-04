@@ -1,0 +1,65 @@
+---
+title: "Analyse how much vCPU and RAM predict the instance limit"
+author: "Raoni Smaneoto"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    toc: yes
+  html_notebook:
+    fig_width: 7
+    theme: readable
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(boot)
+library(readr)
+library(here)
+library(broom)
+theme_set(theme_bw())
+```
+
+### The data
+The data consists on a csv used by fogbow to map the user requirements to an AWS instance.
+The cloud (aws) provide some instances_types that must be selected before launch it. The instances_types varies according to its attributes, like storage, vCPU, Memory, GPU etc.
+```{r}
+data = readr::read_csv(here::here("data/flavors.csv"))
+data
+```
+
+## Data overview
+```{r}
+data %>% ggplot(
+  aes(x=log10(Limits), y=log10(vCPU))
+) + geom_line()
+
+```
+
+```{r}
+data %>% ggplot(aes(x=log10(Limits), y=log10(Memory))) +
+  geom_line()
+```
+
+
+## Model
+```{r}
+data_transformed = data %>% mutate(cpu_log=log10(vCPU), mem_log=log10(Memory), lim_log=log10(Limits)) %>%
+  filter(lim_log > 0)
+
+data_transformed %>%
+  summarize(correlation_mem=cor(mem_log, lim_log, method="pearson"), correlation_cpu=cor(cpu_log, lim_log, method="pearson"))
+
+
+model = lm(lim_log ~ cpu_log + mem_log, data=data_transformed)
+
+tidy(model)
+glance(model)
+```
+
+### Conclusion
+I've found a expressive and negative correlation between the log10 of memory (GB) and the limits, and between log10 of cpu and limits. Besides, when I tried to find a linear model that shows how the limit changes in function of cpu_log and mem_log a expressive r_squared of 0.23 has been found.
+I think it was an expressive value, because there are so many other variables that have influence in the amount of instances from a determined instance_type that can be launched. That other variables haven't been used for two reasons. The first and most important one: They don't have a pattern that could be followed when using them in the model; the second one: I was curious about how much these two variables would influence the limit.
